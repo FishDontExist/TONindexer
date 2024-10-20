@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"sort"
+	"time"
 
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/liteclient"
@@ -23,7 +24,9 @@ type LiteClient struct {
 func New() *LiteClient {
 	client := liteclient.NewConnectionPool()
 
-	cfg, err := liteclient.GetConfigFromUrl(context.Background(), "https://ton.org/global.config.json")
+	// cfg, err := liteclient.GetConfigFromUrl(context.Background(), "https://ton.org/global.config.json")
+	filepath := "../chain/globalconfig.json"
+	cfg, err := liteclient.GetConfigFromFile(filepath)
 	if err != nil {
 		log.Fatalln("get config err: ", err.Error())
 		return nil
@@ -61,6 +64,23 @@ func (l *LiteClient) GetBlockInfoByHeight(info ton.BlockIDExt) ([]ton.Transactio
 	// 	return nil, err
 	// }
 	return extract, nil
+}
+
+type Wallet struct {
+	address    string
+	privateKey []string
+}
+
+func (l *LiteClient) GenerateWallet() Wallet {
+	words, err := GenerateSeedPhrase(12)
+	if err != nil {
+
+	}
+	w, err := wallet.FromSeed(l.api, words, wallet.V3)
+	if err != nil {
+		log.Println(err)
+	}
+	return Wallet{address: w.WalletAddress().String(), privateKey: words}
 }
 
 func LogTransactionShortInfo(tx ton.TransactionShortInfo) {
@@ -107,7 +127,7 @@ func (l *LiteClient) GetBalance(pk ed25519.PrivateKey) (tlb.Coins, error) {
 	return coins, nil
 }
 
-func (l *LiteClient) GetTransactions(accountAddress string, pk ed25519.PrivateKey) {
+func (l *LiteClient) GetTransactions(accountAddress string) {
 	b, err := l.api.CurrentMasterchainInfo(l.ctx)
 	if err != nil {
 		log.Println("get masterchain info err: ", err.Error())
@@ -160,6 +180,39 @@ func (l *LiteClient) GetTransactions(accountAddress string, pk ed25519.PrivateKe
 		}
 	}
 
+}
+
+/*
+func (l *LiteClient) GetTransactionByHash(hash string) (ton.TransactionShortInfo, error) {
+
+	b, err := l.api.CurrentMasterchainInfo(l.ctx)
+	if err != nil {
+		log.Println("get masterchain info err: ", err.Error())
+		return ton.TransactionShortInfo{}, err
+	}
+
+	addr := address.MustParseAddr("EQAYqo4u7VF0fa4DPAebk4g9lBytj2VFny7pzXR0trjtXQaO")
+	res, err := l.api.WaitForBlock(b.SeqNo).GetTransactionByHash(l.ctx, b, addr, hash)
+	if err != nil {
+		log.Println("get account err: ", err.Error())
+		return ton.TransactionShortInfo{}, err
+	}
+
+	return res, nil
+}
+*/
+
+type SimpleBlock struct {
+	block *ton.BlockIDExt
+	time  time.Time
+}
+
+func (l *LiteClient) GetSimpleBlock() *SimpleBlock {
+	block, err := l.GetHeight()
+	if err != nil {
+		return nil
+	}
+	return &SimpleBlock{block: block, time: time.Now()}
 }
 
 func (l *LiteClient) GetFee(pk ed25519.PrivateKey, accountAddr string) (float64, error) {
