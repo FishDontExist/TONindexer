@@ -1,5 +1,8 @@
 package main
 
+import "github.com/FishDontExist/TONindexer/api"
+
 func main() {
-	SetApi()
+
+	api.SetApi()
 }
