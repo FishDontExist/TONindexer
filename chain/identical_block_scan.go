@@ -3,16 +3,20 @@ package chain
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"log"
 	"sort"
+	"strconv"
 	"time"
 
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/liteclient"
 	"github.com/xssnick/tonutils-go/tlb"
 	"github.com/xssnick/tonutils-go/ton"
+	"github.com/xssnick/tonutils-go/ton/jetton"
+	"github.com/xssnick/tonutils-go/ton/nft"
 	"github.com/xssnick/tonutils-go/ton/wallet"
 )
 
@@ -226,4 +230,90 @@ func (l *LiteClient) GetFee(pk ed25519.PrivateKey, accountAddr string) (float64,
 	// block, _ := l.api.CurrentMasterchainInfo(l.ctx)
 	fee := 0.07
 	return fee, nil
+}
+
+// TODO
+func (l *LiteClient) GetJettonInfo() bool {
+	tokenContract := address.MustParseAddr("EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs")
+	master := jetton.NewJettonMasterClient(l.api, tokenContract)
+	data, err := master.GetJettonData(l.ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	decimals := 9
+	content := data.Content.(*nft.ContentOnchain)
+	log.Println("total supply:", data.TotalSupply.Uint64())
+	log.Println("mintable:", data.Mintable)
+	log.Println("admin addr:", data.AdminAddr)
+	log.Println("onchain content:")
+	log.Println("	name:", content.GetAttribute("name"))
+	log.Println("	symbol:", content.GetAttribute("symbol"))
+	if content.GetAttribute("decimals") != "" {
+		decimals, err = strconv.Atoi(content.GetAttribute("decimals"))
+		if err != nil {
+			log.Println("invalid decimals")
+			return false
+		}
+	}
+	log.Println("	decimals:", decimals)
+	log.Println("	description:", content.GetAttribute("description"))
+	log.Println()
+
+	tokenWallet, err := master.GetJettonWallet(l.ctx, address.MustParseAddr("EQCWdteEWa4D3xoqLNV0zk4GROoptpM1-p66hmyBpxjvbbnn"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	tokenBalance, err := tokenWallet.GetBalance(l.ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Println("jetton balance:", tlb.MustFromNano(tokenBalance, decimals))
+	return true
+}
+
+func (l *LiteClient) SendJetton(privateKey ed25519.PrivateKey, amount string, reciever string) (string, bool) {
+	w, err := wallet.FromPrivateKey(l.api, privateKey, wallet.V3)
+	if err != nil {
+		log.Println(err)
+		return "", false
+	}
+	token := jetton.NewJettonMasterClient(l.api, address.MustParseAddr("EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"))
+	tokenWallet, err := token.GetJettonWallet(l.ctx, w.WalletAddress())
+	if err != nil {
+		log.Println(err)
+		return "", false
+	}
+	// tokenBalance, err := tokenWallet.GetBalance(l.ctx)
+	// if err != nil {
+	// 	log.Fatal(err)
+	// }
+	amountTokens := tlb.MustFromDecimal(amount, 9)
+
+	// IF needed
+	comment, err := wallet.CreateCommentCell("Hello from Zion!")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	to := address.MustParseAddr(reciever)
+	transferPayload, err := tokenWallet.BuildTransferPayloadV2(to, to, amountTokens, tlb.ZeroCoins, comment, nil)
+	if err != nil {
+		log.Println(err)
+		return "", false
+	}
+
+	fee := "0.05"
+	msg := wallet.SimpleMessage(tokenWallet.Address(), tlb.MustFromTON(fee), transferPayload)
+	log.Println("sending transaction...")
+
+	tx, _, err := w.SendWaitTransaction(l.ctx, msg)
+	if err != nil {
+		log.Println(err)
+		return "", false
+	}
+	log.Println("transaction confirmed, hash:", base64.StdEncoding.EncodeToString(tx.Hash))
+	hash := base64.StdEncoding.EncodeToString(tx.Hash)
+	return hash, true
 }
