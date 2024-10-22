@@ -54,11 +54,18 @@ func GetBlockData(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 }
 
-func GenerateNewWallet(w http.ResponseWriter, r *http.Request) {
+func (l *LiteNode) GenerateNewWallet(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
-	wallet := l.ln.GenerateWallet()
-	json.NewEncoder(w).Encode(map[string]string{"address": wallet.address, "private_key": wallet.privateKey})
+	wallet, err := l.ln.GenerateWallet()
+	if err != nil {
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(wallet)
 }
 
 func (l *LiteNode) SendTransactionV2(w http.ResponseWriter, r *http.Request) {
@@ -105,15 +112,14 @@ func (l *LiteNode) GetSimpleBlock(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-type BlockExt struct{
+type BlockExt struct {
 	seqNo uint32 `json:"seqNo"`
 }
-
 
 func (l *LiteNode) GetBlockTransactions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var BlockId BlockExt
-	if err:= json.NewDecoder(r.Body).Decode(&BlockId); err != nil {
+	if err := json.NewDecoder(r.Body).Decode(&BlockId); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
@@ -124,7 +130,7 @@ func (l *LiteNode) GetBlockTransactions(w http.ResponseWriter, r *http.Request) 
 		Shard:     blockIdReplicate.Shard,
 		SeqNo:     BlockId.seqNo,
 		RootHash:  blockIdReplicate.RootHash,
-		FileHash: blockIdReplicate.FileHash,
+		FileHash:  blockIdReplicate.FileHash,
 	}
 	transactions, err := l.ln.GetBlockInfoByHeight(blockIDExt)
 
@@ -141,4 +147,19 @@ func (l *LiteNode) GetBlockTransactions(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(response)
 
+}
+
+type TransactionForAddr struct {
+	Addr string `json:"address"`
+}
+
+func (l *LiteNode) GetTransactionForAddr(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+	var address TransactionForAddr
+	if err := json.NewDecoder(r.Body).Decode(&address); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+	l.ln.GetTransactions(address.Addr)
 }

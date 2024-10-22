@@ -71,28 +71,28 @@ func (l *LiteClient) GetBlockInfoByHeight(info ton.BlockIDExt) ([]ton.Transactio
 }
 
 type Wallet struct {
-	address    string
-	privateKey []string
+	Address    string `json:"address"`
+	PrivateKey []string `json:"private_key"`
 }
 
-func (l *LiteClient) GenerateWallet() Wallet {
+func (l *LiteClient) GenerateWallet() (Wallet, error) {
 	words, err := GenerateSeedPhrase(12)
 	if err != nil {
-
+		return Wallet{}, err
 	}
 	w, err := wallet.FromSeed(l.api, words, wallet.V3)
 	if err != nil {
 		log.Println(err)
 	}
-	return Wallet{address: w.WalletAddress().String(), privateKey: words}
+	return Wallet{address: w.WalletAddress().String(), privateKey: words}, nil
 }
 
 type BlockTransactions struct {
 	Account string `json:"account"`
-	Hash string `json:"hash"`
-	LT uint64 `json:"lt"`
-	
+	Hash    string `json:"hash"`
+	LT      uint64 `json:"lt"`
 }
+
 func LogTransactionShortInfo(tx ton.TransactionShortInfo) *BlockTransactions {
 	accountHex := hex.EncodeToString(tx.Account)
 	hashHex := hex.EncodeToString(tx.Hash)
@@ -117,7 +117,7 @@ func (l *LiteClient) Transfer(account string, pk string, amount float64) (*tlb.T
 	strAmount := fmt.Sprintf("%f", amount)
 	addr := address.MustParseAddr(account)
 	transfer, err := w.BuildTransfer(addr, tlb.MustFromTON(strAmount), true, "")
-	if err !=nil{
+	if err != nil {
 		log.Println(err)
 	}
 	tx, _, err := w.SendWaitTransaction(l.ctx, transfer)
@@ -125,7 +125,6 @@ func (l *LiteClient) Transfer(account string, pk string, amount float64) (*tlb.T
 		log.Println(err)
 		return nil, false
 	}
-
 
 	return tx, true
 }
