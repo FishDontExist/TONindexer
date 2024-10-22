@@ -161,5 +161,12 @@ func (l *LiteNode) GetTransactionForAddr(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
-	l.ln.GetTransactions(address.Addr)
+	transactions, err :=l.ln.GetTransactions(address.Addr)
+	if err != nil {
+		http.Error(w, "cannot retrieve transactions", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(transactions)
+
 }

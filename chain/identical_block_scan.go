@@ -71,7 +71,7 @@ func (l *LiteClient) GetBlockInfoByHeight(info ton.BlockIDExt) ([]ton.Transactio
 }
 
 type Wallet struct {
-	Address    string `json:"address"`
+	Address    string   `json:"address"`
 	PrivateKey []string `json:"private_key"`
 }
 
@@ -84,7 +84,7 @@ func (l *LiteClient) GenerateWallet() (Wallet, error) {
 	if err != nil {
 		log.Println(err)
 	}
-	return Wallet{address: w.WalletAddress().String(), privateKey: words}, nil
+	return Wallet{Address: w.WalletAddress().String(), PrivateKey: words}, nil
 }
 
 type BlockTransactions struct {
@@ -152,18 +152,18 @@ func (l *LiteClient) GetBalance(pk string) (tlb.Coins, error) {
 	return coins, nil
 }
 
-func (l *LiteClient) GetTransactions(accountAddress string) {
+func (l *LiteClient) GetTransactions(accountAddress string) ([]*tlb.Transaction, error) {
 	b, err := l.api.CurrentMasterchainInfo(l.ctx)
 	if err != nil {
 		log.Println("get masterchain info err: ", err.Error())
-		return
+		return nil, err
 	}
 
 	addr := address.MustParseAddr(accountAddress)
 	res, err := l.api.WaitForBlock(b.SeqNo).GetAccount(l.ctx, b, addr)
 	if err != nil {
 		log.Println("get account err: ", err.Error())
-		return
+		return nil, err
 	}
 
 	fmt.Printf("Is active: %v\n", res.IsActive)
@@ -179,6 +179,7 @@ func (l *LiteClient) GetTransactions(accountAddress string) {
 	lastLt := res.LastTxLT
 
 	fmt.Printf("\nTransactions:\n")
+	var transactions []*tlb.Transaction
 	for {
 		// last transaction has 0 prev lt
 		if lastLt == 0 {
@@ -189,7 +190,7 @@ func (l *LiteClient) GetTransactions(accountAddress string) {
 		list, err := l.api.ListTransactions(l.ctx, addr, 15, lastLt, lastHash)
 		if err != nil {
 			log.Printf("send err: %s", err.Error())
-			return
+			return nil, err
 		}
 		// set previous info from the oldest transaction in list
 		lastHash = list[0].PrevTxHash
@@ -202,9 +203,11 @@ func (l *LiteClient) GetTransactions(accountAddress string) {
 
 		for _, t := range list {
 			fmt.Println(t.String())
+			transactions = append(transactions, t)
 		}
-	}
 
+	}
+	return transactions, nil
 }
 
 /*
