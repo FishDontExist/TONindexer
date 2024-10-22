@@ -123,8 +123,13 @@ func (l *LiteClient) Transfer(account string, pk string, amount float64) (*tlb.T
 	return tx, true
 }
 
-func (l *LiteClient) GetBalance(pk ed25519.PrivateKey) (tlb.Coins, error) {
-	w, err := wallet.FromPrivateKey(l.api, pk, wallet.V4R2)
+func (l *LiteClient) GetBalance(pk string) (tlb.Coins, error) {
+	privateKeyBytes, err := base64.StdEncoding.DecodeString(pk)
+	if err != nil {
+		log.Println("Failed to decode private key: ", err)
+	}
+	privateKey := ed25519.PrivateKey(privateKeyBytes)
+	w, err := wallet.FromPrivateKey(l.api, privateKey, wallet.V4R2)
 	if err != nil {
 		panic(err)
 	}
