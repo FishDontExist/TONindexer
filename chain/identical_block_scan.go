@@ -87,7 +87,13 @@ func (l *LiteClient) GenerateWallet() Wallet {
 	return Wallet{address: w.WalletAddress().String(), privateKey: words}
 }
 
-func LogTransactionShortInfo(tx ton.TransactionShortInfo) {
+type BlockTransactions struct {
+	Account string `json:"account"`
+	Hash string `json:"hash"`
+	LT uint64 `json:"lt"`
+	
+}
+func LogTransactionShortInfo(tx ton.TransactionShortInfo) *BlockTransactions {
 	accountHex := hex.EncodeToString(tx.Account)
 	hashHex := hex.EncodeToString(tx.Hash)
 
@@ -95,6 +101,7 @@ func LogTransactionShortInfo(tx ton.TransactionShortInfo) {
 	fmt.Printf("Account: %s\n", accountHex)
 	fmt.Printf("LT: %d\n", tx.LT)
 	fmt.Printf("Hash: %s\n", hashHex)
+	return &BlockTransactions{Account: accountHex, Hash: hashHex, LT: tx.LT}
 }
 
 func (l *LiteClient) Transfer(account string, pk string, amount float64) (*tlb.Transaction, bool) {
