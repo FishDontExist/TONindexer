@@ -97,20 +97,30 @@ func LogTransactionShortInfo(tx ton.TransactionShortInfo) {
 	fmt.Printf("Hash: %s\n", hashHex)
 }
 
-func (l *LiteClient) Transfer(account string, pk ed25519.PrivateKey, amount string, message string) bool {
-
-	w, err := wallet.FromPrivateKey(l.api, pk, wallet.V3)
+func (l *LiteClient) Transfer(account string, pk string, amount float64) (*tlb.Transaction, bool) {
+	privateKeyBytes, err := base64.StdEncoding.DecodeString(pk)
+	if err != nil {
+		log.Println("Failed to decode private key: ", err)
+	}
+	privateKey := ed25519.PrivateKey(privateKeyBytes)
+	w, err := wallet.FromPrivateKey(l.api, privateKey, wallet.V2R1)
 	if err != nil {
 		panic(err)
 	}
-
+	strAmount := fmt.Sprintf("%f", amount)
 	addr := address.MustParseAddr(account)
-	err = w.Transfer(l.ctx, addr, tlb.MustFromTON(amount), message)
+	transfer, err := w.BuildTransfer(addr, tlb.MustFromTON(strAmount), true, "")
+	if err !=nil{
+		log.Println(err)
+	}
+	tx, _, err := w.SendWaitTransaction(l.ctx, transfer)
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		return nil, false
 	}
 
-	return true
+
+	return tx, true
 }
 
 func (l *LiteClient) GetBalance(pk ed25519.PrivateKey) (tlb.Coins, error) {
