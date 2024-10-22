@@ -58,7 +58,12 @@ func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 	return info, nil
 }
 
-func (l *LiteClient) GetBlockInfoByHeight(info ton.BlockIDExt) ([]ton.TransactionShortInfo, error) {
+func (l *LiteClient) GetBlockInfoByHeight(seqNo int) ([]ton.TransactionShortInfo, error) {
+	info := ton.BlockIDExt{
+		Workchain: 0,
+		Shard: ,
+		Seq
+	}
 	extract, _, err := l.api.GetBlockTransactionsV2(l.ctx, &info, 100)
 	if err != nil {
 		return nil, err
@@ -76,10 +81,7 @@ type Wallet struct {
 }
 
 func (l *LiteClient) GenerateWallet() (Wallet, error) {
-	words, err := GenerateSeedPhrase(12)
-	if err != nil {
-		return Wallet{}, err
-	}
+	words := wallet.NewSeed()
 	w, err := wallet.FromSeed(l.api, words, wallet.V3)
 	if err != nil {
 		log.Println(err)

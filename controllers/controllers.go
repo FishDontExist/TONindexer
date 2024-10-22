@@ -49,9 +49,18 @@ func (l *LiteNode) GetHeight(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-func GetBlockData(w http.ResponseWriter, r *http.Request) {
-
+type HeightReq struct{
+	Height int `json:"height"`
+}
+func (l *LiteNode)GetBlockData(w http.ResponseWriter, r *http.Request) {
+	var height HeightReq
 	w.Header().Set("Content-Type", "application/json")
+	if err:= json.NewDecoder(r.Body).Decode(&height); err!=nil{
+		log.Println(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]error{"err": err})
+	}
+	l.ln.GetBlockInfoByHeight(height.Height)
 }
 
 func (l *LiteNode) GenerateNewWallet(w http.ResponseWriter, r *http.Request) {
