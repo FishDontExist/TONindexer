@@ -15,7 +15,7 @@ func SetApi() {
 	r.HandleFunc("/height", lt.GetHeight).Methods("GET")
 	r.HandleFunc("/wallet", lt.GenerateNewWallet).Methods("GET")
 	r.HandleFunc("/sendtx", lt.SendTransactionV2).Methods("POST")
-	r.HandleFunc("/getblock", controllers.GetBlockData).Methods("POST")
+	r.HandleFunc("/getblock", lt.GetBlockTransactions).Methods("POST")
 
 	http.Handle("/", r)
 	log.Println("Listening on port 8000")

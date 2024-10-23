@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/FishDontExist/TONindexer/chain"
-	"github.com/xssnick/tonutils-go/ton"
 )
 
 type LiteNode struct {
@@ -49,13 +48,14 @@ func (l *LiteNode) GetHeight(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-type HeightReq struct{
-	Height int `json:"height"`
+type HeightReq struct {
+	Height uint32 `json:"height"`
 }
-func (l *LiteNode)GetBlockData(w http.ResponseWriter, r *http.Request) {
+
+func (l *LiteNode) GetBlockData(w http.ResponseWriter, r *http.Request) {
 	var height HeightReq
 	w.Header().Set("Content-Type", "application/json")
-	if err:= json.NewDecoder(r.Body).Decode(&height); err!=nil{
+	if err := json.NewDecoder(r.Body).Decode(&height); err != nil {
 		log.Println(err)
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]error{"err": err})
@@ -102,7 +102,7 @@ type Balance struct {
 func (l *LiteNode) GetBalance(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	var address Balance
-	_ = json.NewDecoder(r.Body).Decode(address)
+	_ = json.NewDecoder(r.Body).Decode(&address)
 	coins, err := l.ln.GetBalance(address.Address)
 	if err != nil {
 		log.Println(err)
@@ -122,26 +122,17 @@ func (l *LiteNode) GetSimpleBlock(w http.ResponseWriter, r *http.Request) {
 }
 
 type BlockExt struct {
-	seqNo uint32 `json:"seqNo"`
+	SeqNo uint32 `json:"seqNo"`
 }
 
 func (l *LiteNode) GetBlockTransactions(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	var BlockId BlockExt
-	if err := json.NewDecoder(r.Body).Decode(&BlockId); err != nil {
+	var blockId BlockExt
+	if err := json.NewDecoder(r.Body).Decode(&blockId); err != nil {
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
-	blockIdReplicate, _ := l.ln.GetHeight()
-
-	blockIDExt := ton.BlockIDExt{
-		Workchain: blockIdReplicate.Workchain,
-		Shard:     blockIdReplicate.Shard,
-		SeqNo:     BlockId.seqNo,
-		RootHash:  blockIdReplicate.RootHash,
-		FileHash:  blockIdReplicate.FileHash,
-	}
-	transactions, err := l.ln.GetBlockInfoByHeight(blockIDExt)
+	transactions, err := l.ln.GetBlockInfoByHeight(blockId.SeqNo)
 
 	if err != nil {
 		http.Error(w, "cannot retrieve transactions", http.StatusInternalServerError)
@@ -170,7 +161,7 @@ func (l *LiteNode) GetTransactionForAddr(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "Invalid request payload", http.StatusBadRequest)
 		return
 	}
-	transactions, err :=l.ln.GetTransactions(address.Addr)
+	transactions, err := l.ln.GetTransactions(address.Addr)
 	if err != nil {
 		http.Error(w, "cannot retrieve transactions", http.StatusInternalServerError)
 		return

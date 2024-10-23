@@ -58,13 +58,9 @@ func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 	return info, nil
 }
 
-func (l *LiteClient) GetBlockInfoByHeight(seqNo int) ([]ton.TransactionShortInfo, error) {
-	info := ton.BlockIDExt{
-		Workchain: 0,
-		Shard: ,
-		Seq
-	}
-	extract, _, err := l.api.GetBlockTransactionsV2(l.ctx, &info, 100)
+func (l *LiteClient) GetBlockInfoByHeight(info *ton.BlockIDExt) ([]ton.TransactionShortInfo, error) {
+
+	extract, _, err := l.api.GetBlockTransactionsV2(l.ctx, info, 100)
 	if err != nil {
 		return nil, err
 	}
@@ -106,31 +102,85 @@ func LogTransactionShortInfo(tx ton.TransactionShortInfo) *BlockTransactions {
 	return &BlockTransactions{Account: accountHex, Hash: hashHex, LT: tx.LT}
 }
 
-func (l *LiteClient) Transfer(account string, pk string, amount float64) (*tlb.Transaction, bool) {
-	privateKeyBytes, err := base64.StdEncoding.DecodeString(pk)
-	if err != nil {
-		log.Println("Failed to decode private key: ", err)
-	}
-	privateKey := ed25519.PrivateKey(privateKeyBytes)
-	w, err := wallet.FromPrivateKey(l.api, privateKey, wallet.V2R1)
+func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb.Transaction, bool) {
+	// privateKeyBytes, err := base64.StdEncoding.DecodeString(pk)
+	// if err != nil {
+	// 	log.Println("Failed to decode private key: ", err)
+	// }
+	// privateKey := ed25519.PrivateKey(privateKeyBytes)
+	w, err := wallet.FromSeed(l.api, pk, wallet.ConfigV5R1Final{
+		NetworkGlobalID: -239,
+		Workchain:       0,
+	})
+	// wallet.GetWalletVersion(*tlb.Account)
 	if err != nil {
 		panic(err)
 	}
-	strAmount := fmt.Sprintf("%f", amount)
-	addr := address.MustParseAddr(account)
-	transfer, err := w.BuildTransfer(addr, tlb.MustFromTON(strAmount), true, "")
-	if err != nil {
-		log.Println(err)
+	if w == nil {
+		log.Println("wallet is nil")
+		return nil, false
 	}
-	tx, _, err := w.SendWaitTransaction(l.ctx, transfer)
+	log.Println("wallet address:", w.WalletAddress())
+	log.Println("fetching and checking proofs since config init block, it may take near a minute...")
+	block, err := l.api.CurrentMasterchainInfo(l.ctx)
 	if err != nil {
-		log.Println(err)
+		log.Fatalln("get masterchain info err: ", err.Error())
+		return nil, false
+	}
+	log.Println("master proof checks are completed successfully, now communication is 100% safe!")
+
+	balance, err := w.GetBalance(l.ctx, block)
+	if err != nil {
+		log.Fatalln("GetBalance err:", err.Error())
+		return nil, false
+	}
+	log.Println("balance:", balance.String())
+	addr := address.MustParseAddr(account)
+
+	log.Println("sending transaction and waiting for confirmation...")
+
+	// if destination wallet is not initialized (or you don't care)
+	// you should set bounce to false to not get money back.
+	// If bounce is true, money will be returned in case of not initialized destination wallet or smart-contract error
+	bounce := true
+
+	transfer, err := w.BuildTransfer(addr, tlb.MustFromTON("0.003"), bounce, "Hello from tonutils-go!")
+	if err != nil {
+		log.Fatalln("Transfer err:", err.Error())
 		return nil, false
 	}
 
-	return tx, true
-}
+	tx, block, err := w.SendWaitTransaction(l.ctx, transfer)
+	if err != nil {
+		log.Fatalln("SendWaitTransaction err:", err.Error())
+		return nil, false
+	}
+	balance, err = w.GetBalance(l.ctx, block)
+	if err != nil {
+		log.Fatalln("GetBalance err:", err.Error())
+		return nil, false
+	}
 
+	log.Printf("transaction confirmed at block %d, hash: %s balance left: %s", block.SeqNo,
+		base64.StdEncoding.EncodeToString(tx.Hash), balance.String())
+
+	return tx, true
+
+	// strAmount := fmt.Sprintf("%f", amount)
+	// addr := address.MustParseAddr(account)
+	// transfer, err := w.BuildTransfer(addr, tlb.MustFromTON(strAmount), true, "")
+	// if err != nil {
+	// 	log.Println(err)
+	// }
+	// tx, _, err := w.SendWaitTransaction(l.ctx, transfer)
+	// if err != nil {
+	// 	log.Println(err)
+	// 	return nil, false
+	// }
+
+	// return tx, true
+
+}
 func (l *LiteClient) GetBalance(pk string) (tlb.Coins, error) {
 	privateKeyBytes, err := base64.StdEncoding.DecodeString(pk)
 	if err != nil {
