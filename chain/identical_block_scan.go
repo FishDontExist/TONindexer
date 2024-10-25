@@ -9,7 +9,6 @@ import (
 	"log"
 	"sort"
 	"strconv"
-	"time"
 
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/liteclient"
@@ -49,13 +48,36 @@ func New() *LiteClient {
 		ctx: context.Background(),
 	}
 }
-func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 
-	info, err := l.api.GetMasterchainInfo(l.ctx)
+func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
+// func (l *LiteClient) GetHeight() {
+
+	masterchainInfo, err := l.api.GetMasterchainInfo(l.ctx)
 	if err != nil {
+		log.Println(err)
 		return nil, err
 	}
-	return info, nil
+
+	shardInfoList, err := l.api.GetBlockShardsInfo(l.ctx, masterchainInfo)
+	if err != nil {
+		log.Println(err)
+		return nil, err
+	}
+	var wc0Shard *ton.BlockIDExt
+	for _, shard := range shardInfoList {
+		if shard.Workchain == 0 {
+			wc0Shard = shard
+			break
+		}
+	}
+
+	if wc0Shard == nil {
+		log.Println("No shard found for workchain 0")
+		return nil, err
+	}
+
+	return wc0Shard, nil
+
 }
 
 func (l *LiteClient) GetBlockInfoByHeight(info *ton.BlockIDExt) ([]ton.TransactionShortInfo, error) {
@@ -282,18 +304,18 @@ func (l *LiteClient) GetTransactionByHash(hash string) (ton.TransactionShortInfo
 }
 */
 
-type SimpleBlock struct {
-	block *ton.BlockIDExt
-	time  time.Time
-}
+// type SimpleBlock struct {
+// 	block *ton.BlockIDExt
+// 	time  time.Time
+// }
 
-func (l *LiteClient) GetSimpleBlock() *SimpleBlock {
-	block, err := l.GetHeight()
-	if err != nil {
-		return nil
-	}
-	return &SimpleBlock{block: block, time: time.Now()}
-}
+// func (l *LiteClient) GetSimpleBlock() *SimpleBlock {
+// 	block, err := l.GetHeight()
+// 	if err != nil {
+// 		return nil
+// 	}
+// 	return &SimpleBlock{block: block, time: time.Now()}
+// }
 
 func (l *LiteClient) GetFee(pk ed25519.PrivateKey, accountAddr string) (float64, error) {
 	// w, err := wallet.FromPrivateKey(l.api, pk, wallet.V3)

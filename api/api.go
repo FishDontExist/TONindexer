@@ -11,11 +11,11 @@ import (
 func SetApi() {
 	r := mux.NewRouter()
 	lt := controllers.New()
-	r.HandleFunc("/ping", controllers.Ping).Methods("GET")
-	r.HandleFunc("/height", lt.GetHeight).Methods("GET")
-	r.HandleFunc("/wallet", lt.GenerateNewWallet).Methods("GET")
-	r.HandleFunc("/sendtx", lt.SendTransactionV2).Methods("POST")
-	r.HandleFunc("/getblock", lt.GetBlockTransactions).Methods("POST")
+	r.HandleFunc("/ping/", controllers.Ping).Methods("GET")
+	r.HandleFunc("/height/", lt.GetHeight).Methods("GET")
+	r.HandleFunc("/wallet/", lt.GenerateNewWallet).Methods("GET")
+	r.HandleFunc("/sendtx/", lt.SendTransactionV2).Methods("POST")
+	r.HandleFunc("/getblock/", lt.GetBlockData).Methods("GET")
 
 	http.Handle("/", r)
 	log.Println("Listening on port 8000")
