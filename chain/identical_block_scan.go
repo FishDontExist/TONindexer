@@ -50,7 +50,7 @@ func New() *LiteClient {
 }
 
 func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
-// func (l *LiteClient) GetHeight() {
+	// func (l *LiteClient) GetHeight() {
 
 	masterchainInfo, err := l.api.GetMasterchainInfo(l.ctx)
 	if err != nil {
@@ -203,17 +203,13 @@ func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb
 	// return tx, true
 
 }
-func (l *LiteClient) GetBalance(pk string) (tlb.Coins, error) {
-	privateKeyBytes, err := base64.StdEncoding.DecodeString(pk)
-	if err != nil {
-		log.Println("Failed to decode private key: ", err)
-	}
-	privateKey := ed25519.PrivateKey(privateKeyBytes)
-	w, err := wallet.FromPrivateKey(l.api, privateKey, wallet.V4R2)
+func (l *LiteClient) GetBalance(pk []string) (tlb.Coins, error) {
+
+	w, err := wallet.FromSeed(l.api, pk, wallet.V3)
 	if err != nil {
 		panic(err)
 	}
-	block, err := l.api.CurrentMasterchainInfo(l.ctx)
+	block, err := l.GetHeight()
 	if err != nil {
 		log.Println("get masterchain info err: ", err.Error())
 		return tlb.Coins{}, err
