@@ -77,7 +77,7 @@ func (l *LiteNode) GetBlockData(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]error{"err": err})
 	}
-	heightStr, _ := DecomposeHeight(height.Height)
+	heightStr, _ := decomposeHeight(height.Height)
 	heightBigInt := heightStr.Height
 	scaleFactor := big.NewInt(1e16)
 	shardBigInt := new(big.Int).Div(heightBigInt, scaleFactor)
@@ -101,7 +101,7 @@ func (l *LiteNode) GetBlockData(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		json.NewEncoder(w).Encode(map[string]error{"err": err})
 	}
-	response, _ := EncodeTransactionsToJSON(result)
+	response, _ := encodeTransactionsToJSON(result)
 	json.NewEncoder(w).Encode(response)
 
 }
@@ -112,7 +112,7 @@ type DecomposeHeightT struct {
 	FileHash []byte
 }
 
-func DecomposeHeight(combinedHeight string) (*DecomposeHeightT, error) {
+func decomposeHeight(combinedHeight string) (*DecomposeHeightT, error) {
 	// Split the combined string by "|"
 	parts := strings.Split(combinedHeight, "|")
 	if len(parts) != 3 {
@@ -137,7 +137,7 @@ func DecomposeHeight(combinedHeight string) (*DecomposeHeightT, error) {
 
 	return &DecomposeHeightT{Height: height, RootHash: rootHash, FileHash: fileHash}, nil
 }
-func EncodeTransactionsToJSON(txs []ton.TransactionShortInfo) (string, error) {
+func encodeTransactionsToJSON(txs []ton.TransactionShortInfo) (string, error) {
 	var transactions []chain.BlockTransactions
 
 	for _, tx := range txs {

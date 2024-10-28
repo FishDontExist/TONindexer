@@ -203,23 +203,24 @@ func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb
 	// return tx, true
 
 }
-func (l *LiteClient) GetBalance(pk []string) (tlb.Coins, error) {
+func (l *LiteClient) GetBalance(accountAddr string) (tlb.Coins, error) {
 
-	w, err := wallet.FromSeed(l.api, pk, wallet.V3)
-	if err != nil {
-		panic(err)
-	}
-	block, err := l.GetHeight()
+	b, err := l.api.CurrentMasterchainInfo(l.ctx)
 	if err != nil {
 		log.Println("get masterchain info err: ", err.Error())
 		return tlb.Coins{}, err
 	}
-	coins, err := w.GetBalance(l.ctx, block)
+	addr := address.MustParseAddr(accountAddr)
+	res, err := l.api.WaitForBlock(b.SeqNo).GetAccount(l.ctx, b, addr)
 	if err != nil {
-		log.Println(err)
+		log.Println("get account err: ", err.Error())
 		return tlb.Coins{}, err
 	}
-	return coins, nil
+	if !res.IsActive {
+		return tlb.Coins{}, nil
+	}
+
+	return res.State.Balance, nil
 }
 
 func (l *LiteClient) GetTransactions(accountAddress string) ([]*tlb.Transaction, error) {
@@ -367,22 +368,32 @@ func (l *LiteClient) GetJettonInfo() bool {
 	return true
 }
 
-func (l *LiteClient) SendJetton(privateKey ed25519.PrivateKey, amount string, reciever string) (string, bool) {
-	w, err := wallet.FromPrivateKey(l.api, privateKey, wallet.V3)
+func (l *LiteClient) SendJetton(pk []string, amount string, reciever string) (string, bool) {
+
+	w, err := wallet.FromSeed(l.api, pk, wallet.ConfigV5R1Final{
+		NetworkGlobalID: -239,
+		Workchain:       0,
+	})
+
 	if err != nil {
 		log.Println(err)
 		return "", false
 	}
-	token := jetton.NewJettonMasterClient(l.api, address.MustParseAddr("EQCxE6mUtQJKFnGfaROTKOt1lZbDiiX1kCixRv7Nw2Id_sDs"))
+	token := jetton.NewJettonMasterClient(l.api, address.MustParseAddr("EQC7Vk6yHv-3Sc7sShVUo_kpO-LoCABRepLCjklU5DtQlHvx"))
+
 	tokenWallet, err := token.GetJettonWallet(l.ctx, w.WalletAddress())
+
 	if err != nil {
 		log.Println(err)
 		return "", false
 	}
-	// tokenBalance, err := tokenWallet.GetBalance(l.ctx)
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
+	tokenBalance, err := tokenWallet.GetBalance(l.ctx)
+
+	if err != nil {
+		log.Fatal(err)
+		return "", false
+	}
+	fmt.Println("jetton balance:", tokenBalance.String())
 	amountTokens := tlb.MustFromDecimal(amount, 9)
 
 	// IF needed
