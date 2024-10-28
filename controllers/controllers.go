@@ -261,3 +261,46 @@ func (l *LiteNode) GetTransactionForAddr(w http.ResponseWriter, r *http.Request)
 	json.NewEncoder(w).Encode(transactions)
 
 }
+
+type Jetton struct {
+	Reciever   string   `json:"reciever"`
+	PrivateKey []string `json:"private_key"`
+	Amount     string   `json:"amount"`
+}
+
+func (l *LiteNode) SendJetton(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+	var jetton Jetton
+	if err := json.NewDecoder(r.Body).Decode(&jetton); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+
+	hash, ok := l.ln.SendJetton(jetton.PrivateKey, jetton.Reciever, jetton.Amount)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": "Transaction failed"})
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"tx": hash})
+}
+
+func GetTransactionByHash(w http.ResponseWriter, r *http.Request) {
+
+	w.Header().Set("Content-Type", "application/json")
+	var txHash string
+	if err := json.NewDecoder(r.Body).Decode(&txHash); err != nil {
+		http.Error(w, "Invalid request payload", http.StatusBadRequest)
+		return
+	}
+	transactions, err := chain.GetTransactionWithHash(txHash)
+	if err != nil {
+		http.Error(w, "cannot retrieve transactions", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(transactions)
+}

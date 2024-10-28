@@ -5,10 +5,16 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
+	"time"
 
 	"github.com/xssnick/tonutils-go/address"
 	"github.com/xssnick/tonutils-go/liteclient"
@@ -100,7 +106,7 @@ type Wallet struct {
 
 func (l *LiteClient) GenerateWallet() (Wallet, error) {
 	words := wallet.NewSeed()
-	w, err := wallet.FromSeed(l.api, words, wallet.V3)
+	w, err := wallet.FromSeed(l.api, words, wallet.V3R2)
 	if err != nil {
 		log.Println(err)
 	}
@@ -166,7 +172,8 @@ func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb
 	// If bounce is true, money will be returned in case of not initialized destination wallet or smart-contract error
 	bounce := true
 
-	transfer, err := w.BuildTransfer(addr, tlb.MustFromTON("0.003"), bounce, "Hello from tonutils-go!")
+	tonAmountsStr := fmt.Sprintf("%f", amount)
+	transfer, err := w.BuildTransfer(addr, tlb.MustFromTON(tonAmountsStr), bounce, "Hello from tonutils-go!")
 	if err != nil {
 		log.Fatalln("Transfer err:", err.Error())
 		return nil, false
@@ -421,4 +428,133 @@ func (l *LiteClient) SendJetton(pk []string, amount string, reciever string) (st
 	log.Println("transaction confirmed, hash:", base64.StdEncoding.EncodeToString(tx.Hash))
 	hash := base64.StdEncoding.EncodeToString(tx.Hash)
 	return hash, true
+}
+
+// //////////////////////////////////////////////////////////
+
+type TimedTransaction struct {
+    TransactionID string
+    // Add other relevant fields
+}
+
+// Transaction represents a single transaction in the API response.
+type Transaction struct {
+    InMsg   json.RawMessage `json:"in_msg"`
+    OutMsgs json.RawMessage `json:"out_msgs"`
+    // Add other relevant fields as needed
+}
+
+type APIResponse struct {
+    Transactions []Transaction `json:"transactions"`
+}
+
+func GetTransactionWithHash(txHash string) ([]TimedTransaction, error) {
+    baseURL := "https://toncenter.com/api/v3/transactions"
+
+    // Prepare query parameters
+    params := url.Values{}
+    params.Add("workchain", "0")
+    params.Add("hash", txHash)
+    params.Add("limit", "100")
+    params.Add("offset", "0")
+    params.Add("sort", "desc")
+
+    // Construct the full URL
+    fullURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
+
+    var tx *Transaction = nil
+    var apiResp APIResponse
+    var transactions []TimedTransaction
+
+    maxRetries := 4
+    for attempt := 1; attempt <= maxRetries; attempt++ {
+        resp, err := http.Get(fullURL)
+        if err != nil {
+            log.Printf("Attempt %d: Error making GET request: %v", attempt, err)
+            time.Sleep(5 * time.Second)
+            continue
+        }
+
+        // Read and parse the response
+        body, err := ioutil.ReadAll(resp.Body)
+        resp.Body.Close()
+        if err != nil {
+            log.Printf("Attempt %d: Error reading response body: %v", attempt, err)
+            time.Sleep(5 * time.Second)
+            continue
+        }
+
+        if resp.StatusCode != http.StatusOK {
+            log.Printf("Attempt %d: Non-OK HTTP status: %s", attempt, resp.Status)
+            log.Printf("Response Body: %s", string(body))
+            time.Sleep(5 * time.Second)
+            continue
+        }
+
+        // Parse JSON response
+        err = json.Unmarshal(body, &apiResp)
+        if err != nil {
+            log.Printf("Attempt %d: Error parsing JSON response: %v", attempt, err)
+            time.Sleep(5 * time.Second)
+            continue
+        }
+
+        if len(apiResp.Transactions) > 0 {
+            tx = &apiResp.Transactions[0]
+            break
+        }
+
+        // If no transactions found, wait and retry
+        log.Printf("Attempt %d: No transactions found for hash %s. Retrying...", attempt, txHash)
+        time.Sleep(5 * time.Second)
+    }
+
+    if tx == nil {
+        return nil, errors.New("no transaction found after retries")
+    }
+
+    // Check for the presence of "in_msg" and "out_msgs"
+    if len(tx.InMsg) == 0 || len(tx.OutMsgs) == 0 {
+        return nil, errors.New("transaction missing 'in_msg' or 'out_msgs'")
+    }
+
+    // Parse the transaction
+    parsedTx, err := parseTx(*tx)
+    if err != nil {
+        return nil, fmt.Errorf("error parsing transaction: %v", err)
+    }
+
+    if len(parsedTx) != 0 {
+        transactions = append(transactions, parsedTx...)
+    }
+
+    return transactions, nil
+}
+
+
+func parseTx(tx Transaction) ([]TimedTransaction, error) {
+    var timedTxs []TimedTransaction
+
+ 
+    var inMsg string
+    var outMsgs []string
+
+    err := json.Unmarshal(tx.InMsg, &inMsg)
+    if err != nil {
+        log.Printf("Error unmarshaling in_msg: %v", err)
+        return timedTxs, err
+    }
+
+    err = json.Unmarshal(tx.OutMsgs, &outMsgs)
+    if err != nil {
+        log.Printf("Error unmarshaling out_msgs: %v", err)
+        return timedTxs, err
+    }
+
+    timedTx := TimedTransaction{
+        TransactionID: inMsg, 
+    }
+
+    timedTxs = append(timedTxs, timedTx)
+    return timedTxs, nil
 }
