@@ -15,10 +15,11 @@ func SetApi() {
 	r.HandleFunc("/height/", lt.GetHeight).Methods("GET")
 	r.HandleFunc("/wallet/", lt.GenerateNewWallet).Methods("GET")
 	r.HandleFunc("/sendtx/", lt.SendTransactionV2).Methods("POST")
-	r.HandleFunc("/getblock/", lt.GetBlockData).Methods("GET")
+	r.HandleFunc("/getblock/", lt.GetBlockTransactions).Methods("GET")
 	r.HandleFunc("/sendjetton/", lt.SendJetton).Methods("POST")
 	r.HandleFunc("/gettxbyhash/", controllers.GetTransactionByHash).Methods("POST")
 	r.HandleFunc("/getbalance/", lt.GetBalance).Methods("POST")
+	r.HandleFunc("/gettxforaddr/", lt.GetTransactionForAddr).Methods("POST")
 	
 	http.Handle("/", r)
 	log.Println("Listening on port 8000")

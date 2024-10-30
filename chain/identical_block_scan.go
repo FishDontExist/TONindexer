@@ -56,7 +56,6 @@ func New() *LiteClient {
 }
 
 func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
-	// func (l *LiteClient) GetHeight() {
 
 	masterchainInfo, err := l.api.GetMasterchainInfo(l.ctx)
 	if err != nil {
@@ -86,9 +85,9 @@ func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 
 }
 
-func (l *LiteClient) GetBlockInfoByHeight(info *ton.BlockIDExt) ([]ton.TransactionShortInfo, error) {
+func (l *LiteClient) GetBlockInfoByHeight(info *ton.BlockIDExt) (*[]BlockTransactions, error) {
 
-	extract, _, err := l.api.GetBlockTransactionsV2(l.ctx, info, 100)
+	extract, _, err := l.api.GetBlockTransactionsV2(l.ctx, info, 300)
 	if err != nil {
 		return nil, err
 	}
@@ -96,13 +95,10 @@ func (l *LiteClient) GetBlockInfoByHeight(info *ton.BlockIDExt) ([]ton.Transacti
 	// 	fmt.Println("No transactions found")
 	// 	return nil, err
 	// }
-	return extract, nil
+	transactoinList := logTransactionShortInfo(extract)
+	return transactoinList, nil
 }
 
-type Wallet struct {
-	Address    string   `json:"address"`
-	PrivateKey []string `json:"private_key"`
-}
 
 func (l *LiteClient) GenerateWallet() (Wallet, error) {
 	words := wallet.NewSeed()
@@ -113,24 +109,8 @@ func (l *LiteClient) GenerateWallet() (Wallet, error) {
 	return Wallet{Address: w.WalletAddress().String(), PrivateKey: words}, nil
 }
 
-type BlockTransactions struct {
-	Account string `json:"account"`
-	Hash    string `json:"hash"`
-	LT      uint64 `json:"lt"`
-}
-
-func LogTransactionShortInfo(tx ton.TransactionShortInfo) *BlockTransactions {
-	accountHex := hex.EncodeToString(tx.Account)
-	hashHex := hex.EncodeToString(tx.Hash)
-
-	fmt.Printf("Transaction Info:\n")
-	fmt.Printf("Account: %s\n", accountHex)
-	fmt.Printf("LT: %d\n", tx.LT)
-	fmt.Printf("Hash: %s\n", hashHex)
-	return &BlockTransactions{Account: accountHex, Hash: hashHex, LT: tx.LT}
-}
-
 func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb.Transaction, bool) {
+
 	// privateKeyBytes, err := base64.StdEncoding.DecodeString(pk)
 	// if err != nil {
 	// 	log.Println("Failed to decode private key: ", err)
@@ -140,7 +120,6 @@ func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb
 		NetworkGlobalID: -239,
 		Workchain:       0,
 	})
-	// wallet.GetWalletVersion(*tlb.Account)
 	if err != nil {
 		panic(err)
 	}
@@ -148,6 +127,7 @@ func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb
 		log.Println("wallet is nil")
 		return nil, false
 	}
+
 	log.Println("wallet address:", w.WalletAddress())
 	log.Println("fetching and checking proofs since config init block, it may take near a minute...")
 	block, err := l.api.CurrentMasterchainInfo(l.ctx)
@@ -184,6 +164,7 @@ func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb
 		log.Fatalln("SendWaitTransaction err:", err.Error())
 		return nil, false
 	}
+	
 	balance, err = w.GetBalance(l.ctx, block)
 	if err != nil {
 		log.Fatalln("GetBalance err:", err.Error())
@@ -433,128 +414,147 @@ func (l *LiteClient) SendJetton(pk []string, amount string, reciever string) (st
 // //////////////////////////////////////////////////////////
 
 type TimedTransaction struct {
-    TransactionID string
-    // Add other relevant fields
+	TransactionID string
+	// Add other relevant fields
 }
 
 // Transaction represents a single transaction in the API response.
 type Transaction struct {
-    InMsg   json.RawMessage `json:"in_msg"`
-    OutMsgs json.RawMessage `json:"out_msgs"`
-    // Add other relevant fields as needed
+	InMsg   json.RawMessage `json:"in_msg"`
+	OutMsgs json.RawMessage `json:"out_msgs"`
+	// Add other relevant fields as needed
 }
 
 type APIResponse struct {
-    Transactions []Transaction `json:"transactions"`
+	Transactions []Transaction `json:"transactions"`
 }
 
 func GetTransactionWithHash(txHash string) ([]TimedTransaction, error) {
-    baseURL := "https://toncenter.com/api/v3/transactions"
+	baseURL := "https://toncenter.com/api/v3/transactions"
 
-    // Prepare query parameters
-    params := url.Values{}
-    params.Add("workchain", "0")
-    params.Add("hash", txHash)
-    params.Add("limit", "100")
-    params.Add("offset", "0")
-    params.Add("sort", "desc")
+	// Prepare query parameters
+	params := url.Values{}
+	params.Add("workchain", "0")
+	params.Add("hash", txHash)
+	params.Add("limit", "100")
+	params.Add("offset", "0")
+	params.Add("sort", "desc")
 
-    // Construct the full URL
-    fullURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
+	// Construct the full URL
+	fullURL := fmt.Sprintf("%s?%s", baseURL, params.Encode())
 
-    var tx *Transaction = nil
-    var apiResp APIResponse
-    var transactions []TimedTransaction
+	var tx *Transaction = nil
+	var apiResp APIResponse
+	var transactions []TimedTransaction
 
-    maxRetries := 4
-    for attempt := 1; attempt <= maxRetries; attempt++ {
-        resp, err := http.Get(fullURL)
-        if err != nil {
-            log.Printf("Attempt %d: Error making GET request: %v", attempt, err)
-            time.Sleep(5 * time.Second)
-            continue
-        }
+	maxRetries := 4
+	for attempt := 1; attempt <= maxRetries; attempt++ {
+		resp, err := http.Get(fullURL)
+		if err != nil {
+			log.Printf("Attempt %d: Error making GET request: %v", attempt, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
 
-        // Read and parse the response
-        body, err := ioutil.ReadAll(resp.Body)
-        resp.Body.Close()
-        if err != nil {
-            log.Printf("Attempt %d: Error reading response body: %v", attempt, err)
-            time.Sleep(5 * time.Second)
-            continue
-        }
+		// Read and parse the response
+		body, err := ioutil.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			log.Printf("Attempt %d: Error reading response body: %v", attempt, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
 
-        if resp.StatusCode != http.StatusOK {
-            log.Printf("Attempt %d: Non-OK HTTP status: %s", attempt, resp.Status)
-            log.Printf("Response Body: %s", string(body))
-            time.Sleep(5 * time.Second)
-            continue
-        }
+		if resp.StatusCode != http.StatusOK {
+			log.Printf("Attempt %d: Non-OK HTTP status: %s", attempt, resp.Status)
+			log.Printf("Response Body: %s", string(body))
+			time.Sleep(5 * time.Second)
+			continue
+		}
 
-        // Parse JSON response
-        err = json.Unmarshal(body, &apiResp)
-        if err != nil {
-            log.Printf("Attempt %d: Error parsing JSON response: %v", attempt, err)
-            time.Sleep(5 * time.Second)
-            continue
-        }
+		// Parse JSON response
+		err = json.Unmarshal(body, &apiResp)
+		if err != nil {
+			log.Printf("Attempt %d: Error parsing JSON response: %v", attempt, err)
+			time.Sleep(5 * time.Second)
+			continue
+		}
 
-        if len(apiResp.Transactions) > 0 {
-            tx = &apiResp.Transactions[0]
-            break
-        }
+		if len(apiResp.Transactions) > 0 {
+			tx = &apiResp.Transactions[0]
+			break
+		}
 
-        // If no transactions found, wait and retry
-        log.Printf("Attempt %d: No transactions found for hash %s. Retrying...", attempt, txHash)
-        time.Sleep(5 * time.Second)
-    }
+		// If no transactions found, wait and retry
+		log.Printf("Attempt %d: No transactions found for hash %s. Retrying...", attempt, txHash)
+		time.Sleep(5 * time.Second)
+	}
 
-    if tx == nil {
-        return nil, errors.New("no transaction found after retries")
-    }
+	if tx == nil {
+		return nil, errors.New("no transaction found after retries")
+	}
 
-    // Check for the presence of "in_msg" and "out_msgs"
-    if len(tx.InMsg) == 0 || len(tx.OutMsgs) == 0 {
-        return nil, errors.New("transaction missing 'in_msg' or 'out_msgs'")
-    }
+	// Check for the presence of "in_msg" and "out_msgs"
+	if len(tx.InMsg) == 0 || len(tx.OutMsgs) == 0 {
+		return nil, errors.New("transaction missing 'in_msg' or 'out_msgs'")
+	}
 
-    // Parse the transaction
-    parsedTx, err := parseTx(*tx)
-    if err != nil {
-        return nil, fmt.Errorf("error parsing transaction: %v", err)
-    }
+	// Parse the transaction
+	parsedTx, err := parseTx(*tx)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing transaction: %v", err)
+	}
 
-    if len(parsedTx) != 0 {
-        transactions = append(transactions, parsedTx...)
-    }
+	if len(parsedTx) != 0 {
+		transactions = append(transactions, parsedTx...)
+	}
 
-    return transactions, nil
+	return transactions, nil
+}
+
+func parseTx(tx Transaction) ([]TimedTransaction, error) {
+	var timedTxs []TimedTransaction
+
+	var inMsg string
+	var outMsgs []string
+
+	err := json.Unmarshal(tx.InMsg, &inMsg)
+	if err != nil {
+		log.Printf("Error unmarshaling in_msg: %v", err)
+		return timedTxs, err
+	}
+
+	err = json.Unmarshal(tx.OutMsgs, &outMsgs)
+	if err != nil {
+		log.Printf("Error unmarshaling out_msgs: %v", err)
+		return timedTxs, err
+	}
+
+	timedTx := TimedTransaction{
+		TransactionID: inMsg,
+	}
+
+	timedTxs = append(timedTxs, timedTx)
+	return timedTxs, nil
 }
 
 
-func parseTx(tx Transaction) ([]TimedTransaction, error) {
-    var timedTxs []TimedTransaction
+func logTransactionShortInfo(t []ton.TransactionShortInfo) *[]BlockTransactions {
 
- 
-    var inMsg string
-    var outMsgs []string
+	var blockTransactions []BlockTransactions
+	var accountHex, hashHex string
 
-    err := json.Unmarshal(tx.InMsg, &inMsg)
-    if err != nil {
-        log.Printf("Error unmarshaling in_msg: %v", err)
-        return timedTxs, err
-    }
+	for _, transaction := range t {
+		accountHex = hex.EncodeToString(transaction.Account)
+		hashHex = hex.EncodeToString(transaction.Hash)
 
-    err = json.Unmarshal(tx.OutMsgs, &outMsgs)
-    if err != nil {
-        log.Printf("Error unmarshaling out_msgs: %v", err)
-        return timedTxs, err
-    }
+		fmt.Printf("Transaction Info:\n")
+		fmt.Printf("Account: %s\n", accountHex)
+		fmt.Printf("LT: %d\n", transaction.LT)
+		fmt.Printf("Hash: %s\n", hashHex)
 
-    timedTx := TimedTransaction{
-        TransactionID: inMsg, 
-    }
+		blockTransactions = append(blockTransactions, BlockTransactions{Account: accountHex, Hash: hashHex, LT: transaction.LT})
+	}
 
-    timedTxs = append(timedTxs, timedTx)
-    return timedTxs, nil
+	return &blockTransactions
 }
