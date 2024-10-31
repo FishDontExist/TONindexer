@@ -54,7 +54,8 @@ func New() *LiteClient {
 		ctx: context.Background(),
 	}
 }
-
+//TODO:
+// GetParentBlocks()
 func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 
 	masterchainInfo, err := l.api.GetMasterchainInfo(l.ctx)
@@ -63,6 +64,7 @@ func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 		return nil, err
 	}
 
+
 	shardInfoList, err := l.api.GetBlockShardsInfo(l.ctx, masterchainInfo)
 	if err != nil {
 		log.Println(err)
@@ -70,6 +72,7 @@ func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 	}
 	var wc0Shard *ton.BlockIDExt
 	for _, shard := range shardInfoList {
+		log.Println("shard+1")
 		if shard.Workchain == 0 {
 			wc0Shard = shard
 			break
@@ -82,7 +85,6 @@ func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 	}
 
 	return wc0Shard, nil
-
 }
 
 func (l *LiteClient) GetBlockInfoByHeight(info *ton.BlockIDExt) (*[]BlockTransactions, error) {
@@ -189,7 +191,6 @@ func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb
 	// }
 
 	// return tx, true
-
 }
 func (l *LiteClient) GetBalance(accountAddr string) (tlb.Coins, error) {
 

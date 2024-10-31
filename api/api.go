@@ -15,7 +15,7 @@ func SetApi() {
 	r.HandleFunc("/height/", lt.GetHeight).Methods("GET")
 	r.HandleFunc("/wallet/", lt.GenerateNewWallet).Methods("GET")
 	r.HandleFunc("/sendtx/", lt.SendTransactionV2).Methods("POST")
-	r.HandleFunc("/getblock/", lt.GetBlockTransactions).Methods("GET")
+	r.HandleFunc("/transactions/", lt.GetBlockTransactions).Methods("POST")
 	r.HandleFunc("/sendjetton/", lt.SendJetton).Methods("POST")
 	r.HandleFunc("/gettxbyhash/", controllers.GetTransactionByHash).Methods("POST")
 	r.HandleFunc("/getbalance/", lt.GetBalance).Methods("POST")
