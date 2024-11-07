@@ -14,6 +14,7 @@ import (
 	"net/url"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/xssnick/tonutils-go/address"
@@ -54,7 +55,8 @@ func New() *LiteClient {
 		ctx: context.Background(),
 	}
 }
-//TODO:
+
+// TODO:
 // GetParentBlocks()
 func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 
@@ -63,7 +65,6 @@ func (l *LiteClient) GetHeight() (*ton.BlockIDExt, error) {
 		log.Println(err)
 		return nil, err
 	}
-
 
 	shardInfoList, err := l.api.GetBlockShardsInfo(l.ctx, masterchainInfo)
 	if err != nil {
@@ -100,7 +101,6 @@ func (l *LiteClient) GetBlockInfoByHeight(info *ton.BlockIDExt) (*[]BlockTransac
 	transactoinList := logTransactionShortInfo(extract)
 	return transactoinList, nil
 }
-
 
 func (l *LiteClient) GenerateWallet() (Wallet, error) {
 	words := wallet.NewSeed()
@@ -166,7 +166,7 @@ func (l *LiteClient) Transfer(account string, pk []string, amount float64) (*tlb
 		log.Fatalln("SendWaitTransaction err:", err.Error())
 		return nil, false
 	}
-	
+
 	balance, err = w.GetBalance(l.ctx, block)
 	if err != nil {
 		log.Fatalln("GetBalance err:", err.Error())
@@ -539,7 +539,6 @@ func parseTx(tx Transaction) ([]TimedTransaction, error) {
 	return timedTxs, nil
 }
 
-
 func logTransactionShortInfo(t []ton.TransactionShortInfo) *[]BlockTransactions {
 
 	var blockTransactions []BlockTransactions
@@ -558,4 +557,156 @@ func logTransactionShortInfo(t []ton.TransactionShortInfo) *[]BlockTransactions 
 	}
 
 	return &blockTransactions
+}
+
+///////////////////////////////////////////////////////////////
+////      get shards ///////////
+//////////////////////////////////
+
+func (l *LiteClient) GetPrevBlocks() {
+	ctx := l.ctx
+	api := l.api
+
+	masterchainInfo, err := api.GetMasterchainInfo(ctx)
+	if err != nil {
+		log.Fatalf("Failed to get masterchain info: %v", err)
+	}
+
+	blocksMap := make(map[string]*ton.BlockIDExt)
+	var blocks []*ton.BlockIDExt
+
+	masterBlock := masterchainInfo
+
+	var mu sync.Mutex
+
+	for len(blocks) < 100 {
+		shardBlocks, err := api.GetBlockShardsInfo(ctx, masterBlock)
+		if err != nil {
+			log.Fatalf("Failed to get shard blocks: %v", err)
+		}
+
+		var workchain0Shards []*ton.BlockIDExt
+		for _, shard := range shardBlocks {
+			if shard.Workchain == 0 {
+				workchain0Shards = append(workchain0Shards, shard)
+			}
+		}
+
+		if len(workchain0Shards) == 0 {
+			log.Fatalf("No workchain 0 shard blocks found at masterchain seqno %d", masterBlock.SeqNo)
+		}
+
+		type blockResult struct {
+			blocks []*ton.BlockIDExt
+			err    error
+		}
+		resultCh := make(chan blockResult, len(workchain0Shards))
+
+		var wg sync.WaitGroup
+
+		for _, shardBlock := range workchain0Shards {
+			wg.Add(1)
+			go func(shardBlock *ton.BlockIDExt) {
+				defer wg.Done()
+				shardBlocksCollected, err := collectShardBlocks(ctx, api, shardBlock, 100-len(blocks))
+				if err != nil {
+					resultCh <- blockResult{nil, err}
+					return
+				}
+				resultCh <- blockResult{shardBlocksCollected, nil}
+			}(shardBlock)
+		}
+
+		wg.Wait()
+		close(resultCh)
+
+		for res := range resultCh {
+			if res.err != nil {
+				log.Fatalf("Error collecting shard blocks: %v", res.err)
+			}
+			mu.Lock()
+			for _, blk := range res.blocks {
+				blockKey := fmt.Sprintf("%d:%d:%d", blk.Workchain, blk.Shard, blk.SeqNo)
+				if _, exists := blocksMap[blockKey]; !exists {
+					blocksMap[blockKey] = blk
+					blocks = append(blocks, blk)
+					if len(blocks) >= 100 {
+						break
+					}
+				}
+			}
+			mu.Unlock()
+			if len(blocks) >= 100 {
+				break
+			}
+		}
+
+		if len(blocks) >= 100 {
+			break
+		}
+
+		prevBlockData, err := api.GetBlockData(ctx, masterBlock)
+		if err != nil {
+			log.Fatalf("Failed to get previous masterchain block data: %v", err)
+		}
+
+		prevBlocks, _ := getPrevBlocks(&prevBlockData.BlockInfo)
+
+		if len(prevBlocks) == 0 {
+			break
+		}
+
+		masterBlock = prevBlocks[0]
+	}
+
+	if len(blocks) > 100 {
+		blocks = blocks[:100]
+	}
+
+	sort.Slice(blocks, func(i, j int) bool {
+		if blocks[i].SeqNo == blocks[j].SeqNo {
+			return blocks[i].Shard > blocks[j].Shard
+		}
+		return blocks[i].SeqNo > blocks[j].SeqNo
+	})
+
+	for _, blk := range blocks {
+		fmt.Printf("Block: Workchain %d, Shard %d, SeqNo %d\n", blk.Workchain, blk.Shard, blk.SeqNo)
+	}
+}
+
+// collectShardBlocks traverses backward through a shardchain collecting blocks
+func collectShardBlocks(ctx context.Context, api ton.APIClientWrapped, startBlock *ton.BlockIDExt, limit int) ([]*ton.BlockIDExt, error) {
+	var blocks []*ton.BlockIDExt
+	currentBlock := startBlock
+
+	for len(blocks) < limit {
+		blocks = append(blocks, currentBlock)
+
+		blockData, err := api.GetBlockData(ctx, currentBlock)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get block data for block %d: %w", currentBlock.SeqNo, err)
+		}
+
+		prevBlocks, err := blockData.BlockInfo.GetParentBlocks()
+		if err != nil {
+			return nil, fmt.Errorf("failed to get previous blocks for block %d: %w", currentBlock.SeqNo, err)
+		}
+
+		if len(prevBlocks) == 0 {
+			break
+		}
+
+		currentBlock = prevBlocks[0]
+	}
+
+	return blocks, nil
+}
+
+func getPrevBlocks(blockInfo *tlb.BlockHeader) ([]*ton.BlockIDExt, error) {
+	prevBlocks, err := blockInfo.GetParentBlocks()
+	if err != nil {
+		return nil, err
+	}
+	return prevBlocks, nil
 }
