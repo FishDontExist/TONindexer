@@ -26,6 +26,11 @@ import (
 	"github.com/xssnick/tonutils-go/ton/wallet"
 )
 
+const (
+	Limit          = 200
+	NumberOfShards = 4
+)
+
 type LiteClient struct {
 	api ton.APIClientWrapped
 	ctx context.Context
@@ -584,6 +589,9 @@ func (l *LiteClient) GetPrevBlocks() {
 		if err != nil {
 			log.Fatalf("Failed to get shard blocks: %v", err)
 		}
+		for _, shard := range shardBlocks {
+			log.Println(shard.Workchain, shard.Shard)
+		}
 
 		var workchain0Shards []*ton.BlockIDExt
 		for _, shard := range shardBlocks {
@@ -607,12 +615,15 @@ func (l *LiteClient) GetPrevBlocks() {
 		for _, shardBlock := range workchain0Shards {
 			wg.Add(1)
 			go func(shardBlock *ton.BlockIDExt) {
+
 				defer wg.Done()
-				shardBlocksCollected, err := collectShardBlocks(ctx, api, shardBlock, 100-len(blocks))
+
+				shardBlocksCollected, err := collectShardBlocks(ctx, api, shardBlock, Limit/NumberOfShards)
 				if err != nil {
 					resultCh <- blockResult{nil, err}
 					return
 				}
+				log.Println(len(shardBlocksCollected))
 				resultCh <- blockResult{shardBlocksCollected, nil}
 			}(shardBlock)
 		}
@@ -630,18 +641,18 @@ func (l *LiteClient) GetPrevBlocks() {
 				if _, exists := blocksMap[blockKey]; !exists {
 					blocksMap[blockKey] = blk
 					blocks = append(blocks, blk)
-					if len(blocks) >= 100 {
+					if len(blocks) >= Limit {
 						break
 					}
 				}
 			}
 			mu.Unlock()
-			if len(blocks) >= 100 {
+			if len(blocks) >= Limit {
 				break
 			}
 		}
 
-		if len(blocks) >= 100 {
+		if len(blocks) >= Limit {
 			break
 		}
 
@@ -659,9 +670,9 @@ func (l *LiteClient) GetPrevBlocks() {
 		masterBlock = prevBlocks[0]
 	}
 
-	if len(blocks) > 100 {
-		blocks = blocks[:100]
-	}
+	// if len(blocks) > Limit {
+	// 	blocks = blocks[:Limit]
+	// }
 
 	sort.Slice(blocks, func(i, j int) bool {
 		if blocks[i].SeqNo == blocks[j].SeqNo {
@@ -671,7 +682,9 @@ func (l *LiteClient) GetPrevBlocks() {
 	})
 
 	for _, blk := range blocks {
-		fmt.Printf("Block: Workchain %d, Shard %d, SeqNo %d\n", blk.Workchain, blk.Shard, blk.SeqNo)
+		// fmt.Printf("Block: Workchain %d, Shard %d, SeqNo %d\n", blk.Workchain, blk.Shard, blk.SeqNo)
+		fmt.Printf(" Shard %d, SeqNo %d\n", blk.Shard, blk.SeqNo)
+
 	}
 }
 
@@ -691,6 +704,9 @@ func collectShardBlocks(ctx context.Context, api ton.APIClientWrapped, startBloc
 		prevBlocks, err := blockData.BlockInfo.GetParentBlocks()
 		if err != nil {
 			return nil, fmt.Errorf("failed to get previous blocks for block %d: %w", currentBlock.SeqNo, err)
+		}
+		if len(prevBlocks) > 1 {
+			log.Println(len(prevBlocks))
 		}
 
 		if len(prevBlocks) == 0 {
