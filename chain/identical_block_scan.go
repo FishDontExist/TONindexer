@@ -584,7 +584,7 @@ func (l *LiteClient) GetPrevBlocks() {
 
 	var mu sync.Mutex
 
-	for len(blocks) < 100 {
+	for len(blocks) < Limit {
 		shardBlocks, err := api.GetBlockShardsInfo(ctx, masterBlock)
 		if err != nil {
 			log.Fatalf("Failed to get shard blocks: %v", err)
